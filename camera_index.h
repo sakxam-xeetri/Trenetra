@@ -339,7 +339,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bor
 
 <!-- =============== HERO STREAM =============== -->
 <main class="hero" id="hero">
-<img id="stream" class="hide" alt="Live stream">
+<img id="stream" class="hide" alt="Live stream" decoding="async">
 <div class="ph" id="ph" onclick="toggleStream()">
 <div class="ph-in"><div class="ph-btn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div><span class="ph-txt">Tap to start stream</span></div>
 </div>
@@ -606,7 +606,17 @@ function startStream(){
 var img=$('stream');
 $('spinner').classList.add('show');
 img.onload=function(){$('spinner').classList.remove('show');img.onload=null};
-img.onerror=function(){$('spinner').classList.remove('show');nfy('Stream failed','er')};
+img.onerror=function(){
+$('spinner').classList.remove('show');
+if(G.streaming){
+setTimeout(function(){
+if(!G.streaming)return;
+$('spinner').classList.add('show');
+img.src='';
+setTimeout(function(){if(G.streaming)img.src=G.sUrl+'?t='+Date.now();},200);
+},1500);
+}else{nfy('Stream failed','er');}
+};
 img.src=G.sUrl;
 img.classList.remove('hide');
 $('ph').classList.add('hide');
