@@ -38,6 +38,7 @@
 
 // Socket timeout support (after WiFi.h to prevent macro collision)
 #include <sys/socket.h>
+#include <netinet/tcp.h>  // TCP_NODELAY
 
 // SD card headers
 #include "FS.h"
@@ -702,16 +703,26 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   esp_err_t res = ESP_OK;
   size_t _jpg_buf_len = 0;
   uint8_t *_jpg_buf = NULL;
-  char *part_buf[128];
+  char part_buf[128];  // Fixed: was char *part_buf[128] (array of pointers — wrong type)
 
   static int64_t last_frame = 0;
   if (!last_frame) last_frame = esp_timer_get_time();
+
+  // Disable Nagle's algorithm: push each frame immediately without buffering
+  int sock = httpd_req_to_sockfd(req);
+  int nodelay = 1;
+  setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+  // Enlarge send buffer to absorb a couple of QVGA JPEG frames without stalling
+  int sndbuf = 65536;
+  setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
   res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
   if (res != ESP_OK) return res;
 
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  httpd_resp_set_hdr(req, "X-Framerate", "60");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+  httpd_resp_set_hdr(req, "Pragma", "no-cache");
+  httpd_resp_set_hdr(req, "X-Framerate", "25");
 
 #if defined(LED_GPIO_NUM)
   isStreaming = true;
@@ -781,7 +792,15 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     int64_t fr_end = esp_timer_get_time();
     int64_t frame_time = fr_end - last_frame;
     last_frame = fr_end;
-    frame_time /= 1000;
+    frame_time /= 1000;  // microseconds → milliseconds
+
+    // Pace to 25 fps (40 ms/frame).  If the frame was sent faster than the
+    // target interval, sleep the remainder so we don't flood the TCP buffer
+    // and cause the browser to accumulate lag.
+    const int64_t TARGET_MS = 40;  // 25 fps
+    if (frame_time < TARGET_MS) {
+      vTaskDelay((TARGET_MS - frame_time) / portTICK_PERIOD_MS);
+    }
 
     // Update global FPS stats
     totalFrames++;
@@ -1435,9 +1454,13 @@ void startCameraServer() {
     httpd_register_uri_handler(camera_httpd, &flight_report_uri);
   }
 
-  // Start stream HTTP server on port 81
-  config.server_port += 1;
-  config.ctrl_port += 1;
+  // Start stream HTTP server on port 81 — tune for long-lived streaming connection
+  config.server_port      += 1;
+  config.ctrl_port        += 1;
+  config.max_open_sockets  = 4;     // Limit simultaneous viewers to prevent OOM
+  config.stack_size        = 8192;  // Larger stack for the stream task
+  config.recv_wait_timeout = 5;
+  config.send_wait_timeout = 10;    // Allow slower clients up to 10 s per chunk
   log_i("Starting stream server on port: '%d'", config.server_port);
   if (httpd_start(&stream_httpd, &config) == ESP_OK) {
     httpd_register_uri_handler(stream_httpd, &stream_uri);
