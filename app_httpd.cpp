@@ -36,7 +36,6 @@
 
 // Socket timeout support (after WiFi.h to prevent macro collision)
 #include <sys/socket.h>
-#include <netinet/tcp.h>  // TCP_NODELAY
 
 // SD card headers
 #include "FS.h"
@@ -159,9 +158,7 @@ static char currentRecordingFilename[64];
 static esp_err_t index_handler(httpd_req_t *req) {
   httpd_resp_set_type(req, "text/html");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");  // Always serve fresh UI
-  // sizeof(index_html)-1 is O(1) — avoids traversing the entire PROGMEM string
-  return httpd_resp_send(req, index_html, sizeof(index_html) - 1);
+  return httpd_resp_send(req, index_html, strlen(index_html));
 }
 
 // ==================================================================
@@ -694,26 +691,16 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   esp_err_t res = ESP_OK;
   size_t _jpg_buf_len = 0;
   uint8_t *_jpg_buf = NULL;
-  char part_buf[128];  // Fixed: was char *part_buf[128] (array of pointers — wrong type)
+  char *part_buf[128];
 
   static int64_t last_frame = 0;
   if (!last_frame) last_frame = esp_timer_get_time();
-
-  // Disable Nagle's algorithm: push each frame immediately without buffering
-  int sock = httpd_req_to_sockfd(req);
-  int nodelay = 1;
-  setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
-  // Enlarge send buffer to absorb a couple of QVGA JPEG frames without stalling
-  int sndbuf = 65536;
-  setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
   res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
   if (res != ESP_OK) return res;
 
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-  httpd_resp_set_hdr(req, "Pragma", "no-cache");
-  httpd_resp_set_hdr(req, "X-Framerate", "25");
+  httpd_resp_set_hdr(req, "X-Framerate", "60");
 
 #if defined(LED_GPIO_NUM)
   isStreaming = true;
@@ -783,15 +770,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     int64_t fr_end = esp_timer_get_time();
     int64_t frame_time = fr_end - last_frame;
     last_frame = fr_end;
-    frame_time /= 1000;  // microseconds → milliseconds
-
-    // Pace to 25 fps (40 ms/frame).  If the frame was sent faster than the
-    // target interval, sleep the remainder so we don't flood the TCP buffer
-    // and cause the browser to accumulate lag.
-    const int64_t TARGET_MS = 40;  // 25 fps
-    if (frame_time < TARGET_MS) {
-      vTaskDelay((TARGET_MS - frame_time) / portTICK_PERIOD_MS);
-    }
+    frame_time /= 1000;
 
     // Update global FPS stats
     totalFrames++;
@@ -1207,9 +1186,7 @@ static esp_err_t wifi_reset_handler(httpd_req_t *req) {
 // ==================================================================
 void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.max_uri_handlers = 24;
-  config.lru_purge_enable = true;  // Purge oldest socket when max_open_sockets reached — prevents 503
-  config.stack_size       = 8192; // Larger stack for JSON / WiFi scan handlers
+  config.max_uri_handlers = 20;
 
   // ---- URI definitions for the main HTTP server (port 80) ----
   httpd_uri_t index_uri = {
@@ -1434,13 +1411,9 @@ void startCameraServer() {
     httpd_register_uri_handler(camera_httpd, &delete_file_uri);
   }
 
-  // Start stream HTTP server on port 81 — tune for long-lived streaming connection
-  config.server_port      += 1;
-  config.ctrl_port        += 1;
-  config.max_open_sockets  = 4;     // Limit simultaneous viewers to prevent OOM
-  config.stack_size        = 8192;  // Larger stack for the stream task
-  config.recv_wait_timeout = 5;
-  config.send_wait_timeout = 10;    // Allow slower clients up to 10 s per chunk
+  // Start stream HTTP server on port 81
+  config.server_port += 1;
+  config.ctrl_port += 1;
   log_i("Starting stream server on port: '%d'", config.server_port);
   if (httpd_start(&stream_httpd, &config) == ESP_OK) {
     httpd_register_uri_handler(stream_httpd, &stream_uri);
