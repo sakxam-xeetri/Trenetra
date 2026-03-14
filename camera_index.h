@@ -43,7 +43,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 ::-webkit-scrollbar-thumb{background:var(--sf3);border-radius:3px}
 
 /* ===== APPBAR ===== */
-.bar{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--bar);display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:rgba(6,10,17,.97);border-bottom:1px solid rgba(255,255,255,.04)}
+.bar{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--bar);display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:rgba(6,10,17,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.04)}
 .bar-l{display:flex;align-items:center;gap:10px}
 .bar-r{display:flex;align-items:center;gap:2px}
 .lm{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--ac),#b91c1c);display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px var(--acg);flex-shrink:0}
@@ -95,7 +95,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Notify pill (minimal, replaces toasts) */
-.notify{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);padding:8px 18px;border-radius:24px;background:rgba(10,14,23,.99);color:var(--tx);font-size:.75rem;font-weight:500;opacity:0;transition:opacity .3s;pointer-events:none;z-index:15;white-space:nowrap;border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:8px;max-width:90%;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.notify{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);padding:8px 18px;border-radius:24px;background:rgba(10,14,23,.95);backdrop-filter:blur(16px);color:var(--tx);font-size:.75rem;font-weight:500;opacity:0;transition:opacity .3s;pointer-events:none;z-index:15;white-space:nowrap;border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:8px;max-width:90%;box-shadow:0 4px 20px rgba(0,0,0,.4)}
 .notify svg{width:14px;height:14px;flex-shrink:0}
 .notify.show{opacity:1}
 .notify.n-ok svg{fill:var(--ok)}
@@ -103,7 +103,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .notify.n-wn svg{fill:var(--wn)}
 
 /* ===== CONTROL BAR (PRO FLOATING DOCK) ===== */
-.cbar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);height:64px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 20px;background:rgba(10,14,23,.97);border:1px solid rgba(255,255,255,.06);border-radius:32px;z-index:10;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.cbar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);height:64px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 20px;background:rgba(10,14,23,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.06);border-radius:32px;z-index:10;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .cb{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .2s ease;position:relative;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .cb svg{width:22px;height:22px;fill:currentColor}
 .cb:active{transform:scale(.92)}
@@ -338,7 +338,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bor
 
 <!-- =============== HERO STREAM =============== -->
 <main class="hero" id="hero">
-<img id="stream" class="hide" alt="Live stream" decoding="async">
+<img id="stream" class="hide" alt="Live stream">
 <div class="ph" id="ph" onclick="toggleStream()">
 <div class="ph-in"><div class="ph-btn"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div><span class="ph-txt">Tap to start stream</span></div>
 </div>
@@ -480,6 +480,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bor
 <!-- =============== FULLSCREEN =============== -->
 <div class="fso" id="fso">
 <div class="fso-hud"><span class="bg bg-live"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>LIVE</span><span class="bg bg-res" id="fsRes">QVGA</span></div>
+<img id="fsImg" alt="Fullscreen">
 <button class="fso-x" onclick="exitFS()"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
 </div>
 
@@ -573,17 +574,7 @@ function startStream(){
 var img=$('stream');
 $('spinner').classList.add('show');
 img.onload=function(){$('spinner').classList.remove('show');img.onload=null};
-img.onerror=function(){
-$('spinner').classList.remove('show');
-if(G.streaming){
-setTimeout(function(){
-if(!G.streaming)return;
-$('spinner').classList.add('show');
-img.src='';
-setTimeout(function(){if(G.streaming)img.src=G.sUrl+'?t='+Date.now();},200);
-},1500);
-}else{nfy('Stream failed','er');}
-};
+img.onerror=function(){$('spinner').classList.remove('show');nfy('Stream failed','er')};
 img.src=G.sUrl;
 img.classList.remove('hide');
 $('ph').classList.add('hide');
@@ -762,22 +753,16 @@ function chgWB(){fetch(G.base+'/control?var=wb_mode&val='+$('selWB').value)}
 /* ===== Fullscreen ===== */
 function toggleFS(){
 if(!G.streaming){nfy('Start stream first','wn');return}
-// Reparent the live-stream img into the FSO overlay — no extra connection
-var img=$('stream');
-var fso=$('fso');
-fso.insertBefore(img,fso.querySelector('.fso-x'));
-fso.classList.add('show');
+$('fso').classList.add('show');
+$('fsImg').src=G.sUrl;
 $('fsRes').textContent=$('resLbl').textContent;
 document.body.style.overflow='hidden';
 }
 function exitFS(){
-var img=$('stream');
-// Move back to hero only if it was moved to fso
-if(img.parentElement&&img.parentElement.id==='fso'){
-$('hero').insertBefore(img,$('ph'));
-}
 $('fso').classList.remove('show');
-document.body.style.overflow='';}
+$('fsImg').src='';
+document.body.style.overflow='';
+}
 
 /* ===== Drawers ===== */
 function openDr(id){
@@ -1077,16 +1062,23 @@ nfy(d.error||'Delete failed','er');
 function deleteAllFiles(){
 if(!confirm('Delete ALL photos and videos? This cannot be undone!'))return;
 fetch(G.base+'/list-files').then(function(r){return r.json()}).then(function(d){
-if(!d.success||d.files.length===0){nfy('No files to delete','wn');return;}
-var files=d.files.slice();var total=files.length;
-nfy('Deleting '+total+' files...','wn');
-function delNext(){
-if(!files.length){nfy('Deleted '+total+' files','ok');loadGallery();return;}
-var f=files.shift();
-fetch(G.base+'/delete-file?name='+encodeURIComponent(f.name))
-.then(function(){delNext();}).catch(function(){delNext();});}
-delNext();
-}).catch(function(){nfy('Failed to delete files','er')});}
+if(!d.success||d.files.length===0){
+nfy('No files to delete','wn');
+return;
+}
+var count=0;
+var total=d.files.length;
+d.files.forEach(function(f){
+fetch(G.base+'/delete-file?name='+encodeURIComponent(f.name)).then(function(){
+count++;
+if(count===total){
+nfy('Deleted '+total+' files','ok');
+loadGallery();
+}
+});
+});
+}).catch(function(){nfy('Failed to delete files','er')});
+}
 
 </script>
 </body>
