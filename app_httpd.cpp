@@ -140,7 +140,7 @@ void enable_led(bool en) {
 // =======================
 // Photo Counter for SD filenames
 // =======================
-static uint32_t photoCounter = 0;
+uint32_t photoCounter = 0;
 
 // =======================
 // Video Recording State
