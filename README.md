@@ -3,10 +3,10 @@
 # 🔴 TRINETRA
 ### ESP32 Surveillance System
 
-![Version](https://img.shields.io/badge/version-3.1-dc2626?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-3.2-dc2626?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/ESP32--CAM-AI--Thinker-0f172a?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge)
-![UI](https://img.shields.io/badge/UI-Immersive_v3.1-dc2626?style=for-the-badge)
+![UI](https://img.shields.io/badge/UI-Immersive_v3.2-dc2626?style=for-the-badge)
 
 **Enterprise-grade surveillance solution with immersive stream-first web interface**
 
@@ -30,7 +30,7 @@
 
 ### 🔑 What Makes Trinetra Different
 
-| Feature | Trinetra v3.0 | Typical Solutions |
+| Feature | Trinetra v3.2 | Typical Solutions |
 |---------|---------------|-------------------|
 | **UI Design** | Immersive stream-first, professional red theme | Basic HTML forms |
 | **WiFi Setup** | Web-based scan & connect (no code) | Hard-coded credentials |
@@ -38,7 +38,7 @@
 | **Stream Display** | Full-screen with curved edges | Small fixed-size iframe |
 | **Notifications** | Minimal auto-hiding pill | Disruptive alerts |
 | **Camera Adjustments** | Live sliders with instant preview | Refresh-required forms |
-| **Accessibility** | ARIA labels, keyboard shortcuts | Mouse-only |
+| **Accessibility** | ARIA labels, keyboard shortcuts, **physical button** | Mouse-only |
 
 ---
 
@@ -61,6 +61,9 @@
 - **Visual feedback system**: Green glow (success) / Red glow (error)
 - **Graceful degradation**: Works without SD card
 - **Flash LED control** with animated glow effect
+- **🆕 Physical shutter button** — Capture photos with hardware button (GPIO 13)
+- **🆕 Flash blink indicator** — LED blinks during capture for visual confirmation
+- **🆕 Status feedback** — Double-blink on success / Triple-blink on error
 
 ### 💾 SD Card Management
 - **🆕 Real-time storage monitoring** (total, used, free space in GB)
@@ -162,6 +165,7 @@
 - **External WiFi antenna** (with uFL connector) for extended range
 - **3D printed case** for mounting and protection
 - **USB power bank** for portable operation
+- **🆕 Momentary push button** (for physical shutter trigger)
 
 ---
 
@@ -227,6 +231,26 @@ Connect USB-to-Serial adapter to ESP32-CAM:
 **Flash Mode**: Connect **GPIO 0 to GND** before powering on
 
 **Run Mode**: Disconnect **GPIO 0 from GND** and press **RST** button
+
+#### 🆕 Physical Shutter Button (Optional)
+
+For hardware photo capture without web browser access:
+
+| Component | ESP32-CAM Pin | Notes |
+|-----------|---------------|-------|
+| **Momentary Button** | GPIO 13 → GND | Internal pull-up enabled |
+
+**Wiring**:
+1. Connect one side of push button to **GPIO 13**
+2. Connect other side to **GND**
+3. No external resistor needed (internal pull-up used)
+
+**Operation**:
+- Press button to capture photo to SD card
+- Flash LED blinks during capture (150ms)
+- **Success**: Double-blink confirmation
+- **Error**: Triple-blink (no SD card)
+- Debounced automatically (300ms)
 
 ### Step 4: Upload Firmware
 
@@ -411,6 +435,25 @@ curl "http://1.2.3.4/delete-file?name=video_00001.mjpeg"
 - ✅ Ensure recording wasn't interrupted while saving
 - ✅ Check file size is > 0 bytes
 
+### 🆕 Physical Button Issues
+
+**❌ Button not working**
+
+**Solutions**:
+- ✅ Check wiring: Button between GPIO 13 and GND
+- ✅ Verify SD card is inserted (button only saves to SD)
+- ✅ Press button firmly (300ms debounce)
+- ✅ Watch flash LED for blink pattern feedback
+- ✅ Check Serial Monitor for `[BTN]` messages
+
+**❌ Button triggers multiple captures**
+
+**Solutions**:
+- ✅ This is normal (debounce prevents rapid firing)
+- ✅ Wait 300ms between presses
+- ✅ Use better quality button (no bouncing contacts)
+- ✅ Check wiring isn't loose or intermittent
+
 ---
 
 ## 🔐 Security
@@ -439,10 +482,10 @@ curl "http://1.2.3.4/delete-file?name=video_00001.mjpeg"
 
 ```
 trinetra/
-├── trinetra.ino          # Main sketch
-├── app_httpd.cpp         # HTTP server
-├── camera_index.h        # Web UI (v3.0)
-├── board_config.h        # Board selection
+├── trinetra.ino          # Main sketch + button handler
+├── app_httpd.cpp         # HTTP server + API endpoints
+├── camera_index.h        # Web UI (v3.1)
+├── board_config.h        # Board selection + button GPIO
 ├── camera_pins.h         # Pin definitions
 └── README.md             # Documentation
 ```
@@ -512,6 +555,26 @@ MIT License - Copyright (c) 2026 Trinetra Project
 ---
 
 ## 📊 Changelog
+
+### v3.2 — Physical Shutter Button (March 2026)
+
+**📷 Hardware Photo Capture**
+- Physical button support on GPIO 13
+- Capture photos without web browser access
+- Flash LED blinks during capture (visual indicator)
+- Double-blink on successful save
+- Triple-blink error indication (no SD card)
+- 300ms debounce protection
+- Interrupt-driven (zero CPU overhead)
+- Shares filename counter with web captures
+- Non-blocking operation (doesn't affect streaming)
+
+**🔧 Technical Details**
+- Uses internal pull-up resistor
+- Interrupt Service Routine (IRAM_ATTR)
+- Safe for concurrent web captures
+- Works in parallel with recording
+- No impact on camera performance
 
 ### v3.1 — Video Recording & SD Card Management (February 2026)
 
