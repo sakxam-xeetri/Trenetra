@@ -50,13 +50,6 @@ String savedPassword = "";
 bool wifiConnected = false;
 
 // =======================
-// Physical Shutter Button
-// =======================
-// Connect a momentary push-button between GPIO 13 and GND.
-// GPIO 13 is free when SD card runs in 1-bit mode (default).
-#define BUTTON_GPIO_NUM 13
-
-// =======================
 // Access Point Configuration (always available)
 // =======================
 const char *ap_ssid     = "Trinetra";
@@ -196,66 +189,6 @@ String getWiFiStatus() {
 }
 
 // =======================
-// Physical Button: Capture photo and save to SD card
-// =======================
-void captureAndSavePhoto() {
-  if (!sdCardAvailable) {
-    Serial.println("[BTN] SD card not available - cannot save photo");
-    return;
-  }
-
-  Serial.println("[BTN] Shutter pressed - capturing photo...");
-
-  camera_fb_t *fb = NULL;
-
-#if defined(LED_GPIO_NUM)
-  ledcWrite(LED_GPIO_NUM, 255);     // Flash ON
-  delay(150);                        // Brief flash for exposure
-  fb = esp_camera_fb_get();
-  ledcWrite(LED_GPIO_NUM, 0);       // Flash OFF
-#else
-  fb = esp_camera_fb_get();
-#endif
-
-  if (!fb) {
-    Serial.println("[BTN] Camera capture failed");
-    return;
-  }
-
-  static uint32_t btnPhotoCounter = 0;
-  btnPhotoCounter++;
-  char filename[64];
-  snprintf(filename, sizeof(filename), "/btn_%05lu.jpg", (unsigned long)btnPhotoCounter);
-
-  File file = SD_MMC.open(filename, FILE_WRITE);
-  if (!file) {
-    esp_camera_fb_return(fb);
-    Serial.println("[BTN] Failed to open file on SD");
-    return;
-  }
-
-  size_t written = 0;
-  if (fb->format == PIXFORMAT_JPEG) {
-    written = file.write(fb->buf, fb->len);
-  } else {
-    uint8_t *jpg_buf = NULL;
-    size_t jpg_len = 0;
-    if (frame2jpg(fb, 80, &jpg_buf, &jpg_len)) {
-      written = file.write(jpg_buf, jpg_len);
-      free(jpg_buf);
-    }
-  }
-  file.close();
-  esp_camera_fb_return(fb);
-
-  if (written > 0) {
-    Serial.printf("[BTN] Photo saved: %s (%u bytes)\n", filename, written);
-  } else {
-    Serial.println("[BTN] Photo write failed");
-  }
-}
-
-// =======================
 // Initialize SD Card (1-bit mode for AI-Thinker compatibility)
 // =======================
 void initSDCard() {
@@ -323,22 +256,23 @@ void setup() {
   config.xclk_freq_hz = 20000000;            // 20 MHz XCLK
   config.pixel_format = PIXFORMAT_JPEG;       // JPEG for streaming
   config.frame_size   = FRAMESIZE_QVGA;       // Default: 320x240
-  config.jpeg_quality = 15;                   // 0-63, slightly relaxed for faster encoding
-  config.fb_count     = 2;                    // Dual-buffer by default — eliminates stale-frame stalls
-  config.grab_mode    = CAMERA_GRAB_LATEST;   // Always discard stale frames, grab freshest
+  config.jpeg_quality = 12;                   // 0-63, lower = better quality
+  config.fb_count     = 1;
+  config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location  = CAMERA_FB_IN_PSRAM;
 
   // Optimize if PSRAM is available
   if (psramFound()) {
     Serial.println("[CAM] PSRAM found - using optimized settings");
-    config.jpeg_quality = 12;                 // Better quality with PSRAM
-    config.fb_count     = 3;                  // Triple buffer — smoothest possible stream
-    config.frame_size   = FRAMESIZE_QVGA;     // QVGA for fast streaming
+    config.jpeg_quality = 10;                 // Better quality with PSRAM
+    config.fb_count     = 2;                  // Dual frame buffer for smooth stream
+    config.grab_mode    = CAMERA_GRAB_LATEST; // Always grab the latest frame
+    config.frame_size   = FRAMESIZE_QVGA;     // Start at QVGA for fast streaming
   } else {
     Serial.println("[CAM] No PSRAM - using conservative settings");
     config.frame_size   = FRAMESIZE_QVGA;
     config.fb_location  = CAMERA_FB_IN_DRAM;
-    config.fb_count     = 2;
+    config.fb_count     = 1;
   }
 
   // ----- Initialize Camera -----
@@ -367,10 +301,6 @@ void setup() {
   setupLedFlash();
   Serial.println("[LED] Flash LED initialized");
 #endif
-
-  // ----- Physical Shutter Button -----
-  pinMode(BUTTON_GPIO_NUM, INPUT_PULLUP);
-  Serial.printf("[BTN] Shutter button ready on GPIO %d (connect to GND)\n", BUTTON_GPIO_NUM);
 
   // ----- Initialize SD Card -----
   initSDCard();
@@ -425,7 +355,7 @@ void setup() {
   // ----- Start Web Server -----
   startCameraServer();
 
-  // ----- Setup OTA (Over-The-Air Updates) -------
+  // ----- Setup OTA (Over-The-Air Updates) -----
   ArduinoOTA.setHostname("trinetra");
   ArduinoOTA.setPassword("trinetra123");  // Change this password!
   
@@ -480,30 +410,12 @@ void setup() {
 }
 
 // =======================
-// LOOP - Process DNS, OTA, WiFi reconnect, Button
+// LOOP - Process DNS, OTA, WiFi reconnect
 // =======================
 void loop() {
   dnsServer.processNextRequest();  // Handle DNS for captive portal redirection
   ArduinoOTA.handle();              // Handle OTA updates
-
-  // ----- Physical Shutter Button (debounced) -----
-  // Press fires once per button press; waits for release before re-arming.
-  static bool btnHandled = false;
-  static unsigned long btnPressTime = 0;
-  bool btnState = digitalRead(BUTTON_GPIO_NUM);
-
-  if (btnState == LOW && !btnHandled) {
-    if (btnPressTime == 0) {
-      btnPressTime = millis();           // Start debounce timer
-    } else if (millis() - btnPressTime >= 50) {  // Confirmed press
-      captureAndSavePhoto();
-      btnHandled = true;                 // Prevent repeat until released
-    }
-  } else if (btnState == HIGH) {
-    btnHandled  = false;
-    btnPressTime = 0;
-  }
-
+  
   // Auto-reconnect to saved WiFi if connection is lost
   static unsigned long lastReconnectAttempt = 0;
   if (savedSSID.length() > 0 && WiFi.status() != WL_CONNECTED) {
@@ -518,6 +430,6 @@ void loop() {
     wifiConnected = true;
     Serial.printf("[WiFi] Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
   }
-
+  
   delay(10);
 }
